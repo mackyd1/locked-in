@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Locked-In</title>
+    <style>
+      :root {
+        --bg: #0f1419;
+        --panel: #1a222c;
+        --text: #e7ecf1;
+        --muted: #8b9aab;
+        --accent: #3dd6c6;
+        --warn: #e8a87c;
+        --line: #2a3542;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: radial-gradient(1200px 600px at 10% -10%, #1b3a3a 0%, var(--bg) 55%);
+        color: var(--text);
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 2.5rem 1.25rem 4rem;
+      }
+      h1 {
+        font-size: 2rem;
+        letter-spacing: -0.03em;
+        margin: 0 0 0.35rem;
+      }
+      .sub {
+        color: var(--muted);
+        margin-bottom: 1.75rem;
+      }
+      .auth {
+        display: flex;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+      }
+      input {
+        flex: 1 1 220px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--text);
+        border-radius: 8px;
+        padding: 0.7rem 0.85rem;
+        font-size: 0.95rem;
+      }
+      button {
+        background: var(--accent);
+        color: #06241f;
+        border: 0;
+        border-radius: 8px;
+        padding: 0.7rem 1rem;
+        font-weight: 650;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: wait;
+      }
+      .card {
+        background: color-mix(in srgb, var(--panel) 92%, black);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1.1rem 1.2rem;
+        margin-bottom: 0.9rem;
+      }
+      .card h2 {
+        margin: 0 0 0.55rem;
+        font-size: 1rem;
+        color: var(--muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .stat {
+        font-size: 2.2rem;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 0.75rem;
+      }
+      .pill {
+        background: #121820;
+        border-radius: 8px;
+        padding: 0.75rem;
+      }
+      .pill .label {
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      .err {
+        color: var(--warn);
+        white-space: pre-wrap;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      ul {
+        margin: 0.4rem 0 0;
+        padding-left: 1.1rem;
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Locked-In</h1>
+      <p class="sub">Paste your API key (same as <code>API_KEY</code> in <code>.env</code>), then load.</p>
+      <div class="auth">
+        <input id="key" type="password" placeholder="API_KEY" autocomplete="off" />
+        <button id="load" type="button">Load summary</button>
+      </div>
+      <div id="out" class="muted">Waiting…</div>
+    </main>
+    <script>
+      const keyInput = document.getElementById("key");
+      const out = document.getElementById("out");
+      const loadBtn = document.getElementById("load");
+      keyInput.value = sessionStorage.getItem("locked_in_api_key") || "";
+
+      async function load() {
+        const key = keyInput.value.trim();
+        if (!key) {
+          out.innerHTML = '<p class="err">Enter your API_KEY first.</p>';
+          return;
+        }
+        sessionStorage.setItem("locked_in_api_key", key);
+        loadBtn.disabled = true;
+        out.textContent = "Loading…";
+        try {
+          const res = await fetch("/v1/me/summary", {
+            headers: { "x-api-key": key },
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            out.innerHTML = `<p class="err">${res.status}: ${body.detail || JSON.stringify(body)}</p>`;
+            return;
+          }
+          const lc = body.leetcode || {};
+          const gym = body.gym || {};
+          const data = lc.data || {};
+          const recent = (data.recent_ac || [])
+            .map(
+              (item) =>
+                `<li><a href="https://leetcode.com/problems/${item.slug}/" target="_blank" rel="noreferrer">${item.title}</a></li>`,
+            )
+            .join("");
+          out.innerHTML = `
+            <div class="card">
+              <h2>LeetCode ${lc.available ? "· online" : "· offline"}</h2>
+              ${
+                lc.available
+                  ? `<div class="stat">${data.total_solved ?? "—"} solved</div>
+                     <div class="row" style="margin-top:0.9rem">
+                       <div class="pill"><div class="label">Easy</div><div>${data.easy ?? 0}</div></div>
+                       <div class="pill"><div class="label">Medium</div><div>${data.medium ?? 0}</div></div>
+                       <div class="pill"><div class="label">Hard</div><div>${data.hard ?? 0}</div></div>
+                       <div class="pill"><div class="label">Ranking</div><div>${data.ranking ?? "—"}</div></div>
+                     </div>
+                     <p class="muted" style="margin:1rem 0 0.25rem">Recent ACs</p>
+                     <ul>${recent || "<li class='muted'>None</li>"}</ul>`
+                  : `<p class="err">${lc.error || "Unavailable"}</p>`
+              }
+            </div>
+            <div class="card">
+              <h2>Gym ${gym.available ? "· online" : "· on hold"}</h2>
+              <p class="muted">${gym.error || "No gym data"}</p>
+            </div>
+            <p class="muted">Generated ${body.generated_at || ""}</p>
+          `;
+        } catch (err) {
+          out.innerHTML = `<p class="err">${err}</p>`;
+        } finally {
+          loadBtn.disabled = false;
+        }
+      }
+
+      loadBtn.addEventListener("click", load);
+      keyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") load();
+      });
+      if (keyInput.value) load();
+    </script>
+  </body>
+</html>
